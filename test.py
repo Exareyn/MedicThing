@@ -1,40 +1,35 @@
 import numpy as np
 import pandas as pd
-from sklearn.preprocessing import MinMaxScaler
 from tensorflow.keras.models import load_model
+import joblib
 
-# Charger le modèle entraîné
+scaler = joblib.load('scaler.joblib')
+columns = joblib.load('columns.joblib')
+
 model = load_model('model_lstm.h5')
 
-# Charger les nouvelles données
-new_data = pd.read_csv('data/dataset.csv')
+def preprocess_new_data(new_data):
+    new_data_df = pd.DataFrame(new_data, columns=["age", "restingBP", "gender", "chestpain", "serumcholestrol", 
+                                                  "fastingbloodsugar", "restingrelectro", "maxheartrate", 
+                                                  "exerciseangia", "oldpeak", "slope", "noofmajorvessels"])
 
-# Retirer les colonnes non pertinentes
-new_data = new_data.drop(['patientid'], axis=1)
+    new_data_df = pd.get_dummies(new_data_df, columns=["gender", "chestpain", "fastingbloodsugar", "restingrelectro", "exerciseangia", "slope", "noofmajorvessels"])
+    
+    for col in columns:
+        if col not in new_data_df:
+            new_data_df[col] = 0
+    new_data_df = new_data_df[columns]
+    new_data_df[["age", "restingBP", "serumcholestrol", "maxheartrate", "oldpeak"]] = scaler.transform(new_data_df[["age", "restingBP", "serumcholestrol", "maxheartrate", "oldpeak"]])
+    return new_data_df
 
-# Séparer les features (X)
-X_new = new_data.values
+def predict_new_data(new_data):
+    preprocessed_data = preprocess_new_data(new_data)
+    
+    preprocessed_data = preprocessed_data.values.reshape((preprocessed_data.shape[0], 1, preprocessed_data.shape[1]))
+    new_pred = model.predict(preprocessed_data)
+    new_pred = (new_pred > 0.5).astype(int)
+    return new_pred
 
-# Normaliser les nouvelles données
-scaler = MinMaxScaler(feature_range=(0, 1))
-X_new_scaled = scaler.fit_transform(X_new)  # Assurez-vous d'utiliser le même scaler que celui utilisé pour les données de formation
-
-# Définir la longueur des séquences
-sequence_length = 10
-
-# Fonction pour créer les séquences
-def create_sequences(X, sequence_length):
-    X_seq = []
-    for i in range(len(X) - sequence_length):
-        X_seq.append(X[i:i+sequence_length])
-    return np.array(X_seq)
-
-# Créer des séquences à partir des nouvelles données
-X_new_seq = create_sequences(X_new_scaled, sequence_length)
-
-# Faire des prédictions
-predictions = model.predict(X_new_seq)
-predictions = (predictions > 0.5).astype(int)  # Convertir les probabilités en classes binaires
-
-# Afficher les prédictions
-print(predictions)
+new_data = np.array([[57, 150, 1, 0, 229, 0, 1, 140, 0, 2.5, 2, 3]])
+prediction = predict_new_data(new_data)
+print("Prédiction:", prediction)
